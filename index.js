@@ -35,6 +35,7 @@ async function run() {
     const apartmentCollection = client.db("greenHouse").collection("apartment");
     const agreementCollection = client.db("greenHouse").collection("agreement");
     const userCollection = client.db("greenHouse").collection("users");
+    const announcementCollection = client.db("greenHouse").collection("announcement");
 
     // jwt
 
@@ -163,6 +164,15 @@ async function run() {
     app.get("/apartments-count", async (req, res) => {
       const count = await apartmentCollection.countDocuments();
       res.send({ count });
+    });
+
+
+    // announcement api
+
+    app.post("/announcement", async (req, res) => {
+      const announcement = req.body;
+      const result = await announcementCollection.insertOne(announcement);
+      res.send(result);
     });
 
     // Send a ping to confirm a successful connection
