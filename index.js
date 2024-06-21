@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const port = process.env.PORT || 5000;
 
@@ -16,7 +16,6 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.6w72r5l.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -25,7 +24,7 @@ const client = new MongoClient(uri, {
     version: ServerApiVersion.v1,
     strict: true,
     deprecationErrors: true,
-  }
+  },
 });
 
 async function run() {
@@ -37,7 +36,7 @@ async function run() {
     const agreementCollection = client.db("greenHouse").collection("agreement");
     const userCollection = client.db("greenHouse").collection("users");
 
-   // jwt
+    // jwt
 
     app.post("/jwt", async (req, res) => {
       const user = req.body;
@@ -50,7 +49,7 @@ async function run() {
     //middleware
 
     const verifyToken = (req, res, next) => {
-      // console.log('inside verify token ', req.headers.authorization);
+      // console.log("inside verify token ", req.headers.authorization);
       if (!req.headers.authorization) {
         return res.status(401).send({ message: "unauthorized access" });
       }
@@ -83,7 +82,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users/admin/:email", verifyToken, async (req, res) => {
+    app.get("/users/admin/:email", verifyToken,  async (req, res) => {
       const email = req.params.email;
       if (email !== req.decoded.email) {
         return res.status(403).send({ message: " forbidden access" });
@@ -99,8 +98,6 @@ async function run() {
 
     app.post("/users", async (req, res) => {
       const user = req.body;
-      // insert email if user doesn't exists :
-      //you can do this many way (1, email unique , 2, upsert , 3. simple  checking   )
       const query = { email: user.email };
       const existingUser = await userCollection.findOne(query);
       if (existingUser) {
@@ -110,13 +107,12 @@ async function run() {
       res.send(result);
     });
 
-    app.patch(
-      "/users/admin/:id",
+    app.patch("/users/admin/:id",
       verifyToken,
-      verifyAdmin,
+       verifyAdmin, 
       async (req, res) => {
         const id = req.params.id;
-        const filter = { _id: new ObjectId(id) };
+        const filter = { _id: new ObjectId(id)}
         const updatedDoc = {
           $set: {
             role: "admin",
@@ -127,54 +123,53 @@ async function run() {
       }
     );
 
-    app.delete("/users/:id", verifyToken, verifyAdmin, async (req, res) => {
+    app.delete("/users/:id", verifyToken,
+    verifyAdmin,  async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await userCollection.deleteOne(query);
       res.send(result);
     });
 
-    // apartment api 
+    // apartment api
 
     app.get("/apartments", async (req, res) => {
-        const result = await apartmentCollection.find().toArray();
-        res.send(result);
-      });
+      const result = await apartmentCollection.find().toArray();
+      res.send(result);
+    });
 
+    // card collection api
 
-      // card collection api 
+    app.post("/agreement", async (req, res) => {
+      const cartItem = req.body;
+      const result = await agreementCollection.insertOne(cartItem);
+      res.send(result);
+    });
 
-      app.post("/agreement", async (req, res) => {
-        const cartItem = req.body;
-        const result = await agreementCollection.insertOne(cartItem);
-        res.send(result);
-      });
+    // pagination
 
+    app.get("/all-apartments", async (req, res) => {
+      const size = parseInt(req.query.size);
+      const page = parseInt(req.query.page) - 1;
+      console.log(size, page);
+      const result = await apartmentCollection
+        .find()
+        .skip(page * size)
+        .limit(size)
+        .toArray();
+      res.send(result);
+    });
 
-      // pagination 
-
-      app.get("/all-apartments", async (req, res) => {
-        const size =parseInt(req.query.size)
-        const page =parseInt(req.query.page) -1
-        console.log(size, page);
-        const result = await apartmentCollection.find().skip(page * size).limit(size).toArray();
-        res.send(result);
-      });
-
-      app.get("/apartments-count", async (req, res) => {
-        const count = await apartmentCollection.countDocuments()
-        res.send({count});
-      });
-
-      
-
-
-
-
+    app.get("/apartments-count", async (req, res) => {
+      const count = await apartmentCollection.countDocuments();
+      res.send({ count });
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
@@ -182,13 +177,10 @@ async function run() {
 }
 run().catch(console.dir);
 
-
-
-
 app.get("/", (req, res) => {
-    res.send("green house making server is running");
-  });
-  
-  app.listen(port, () => {
-    console.log(`server is running on port : ${port}`);
-  });
+  res.send("green house making server is running");
+});
+
+app.listen(port, () => {
+  console.log(`server is running on port : ${port}`);
+});
