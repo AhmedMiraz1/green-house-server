@@ -124,6 +124,21 @@ async function run() {
       }
     );
 
+    app.patch("/users/member/:id",
+       
+      async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id)}
+        const updatedDoc = {
+          $set: {
+            role: "member",
+          },
+        };
+        const result = await userCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      }
+    );
+
     app.delete("/users/:id", verifyToken,
     verifyAdmin,  async (req, res) => {
       const id = req.params.id;
@@ -139,11 +154,16 @@ async function run() {
       res.send(result);
     });
 
-    // card collection api
+    // agreement collection api
 
     app.post("/agreement", async (req, res) => {
       const cartItem = req.body;
       const result = await agreementCollection.insertOne(cartItem);
+      res.send(result);
+    });
+
+    app.get("/agreement",  async (req, res) => {
+      const result = await agreementCollection.find().toArray();
       res.send(result);
     });
 
@@ -172,6 +192,12 @@ async function run() {
     app.post("/announcement", async (req, res) => {
       const announcement = req.body;
       const result = await announcementCollection.insertOne(announcement);
+      res.send(result);
+    });
+
+
+    app.get("/announcements", async (req, res) => {
+      const result = await announcementCollection.find().toArray();
       res.send(result);
     });
 
