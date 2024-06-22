@@ -4,11 +4,16 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
+const stripe =require('stripe')(process.env.STRIPE_SECRET_KEY)
 const port = process.env.PORT || 5000;
 
 //middleware
 const corsOptions = {
-  origin: ["http://localhost:5173", "http://localhost:5175"],
+  origin: [
+    "b9-12-46aab.web.app",
+    "http://localhost:5173",
+    "http://localhost:5175",
+  ],
   credentials: true,
   optionSuccessStatus: 200,
 };
@@ -35,7 +40,12 @@ async function run() {
     const apartmentCollection = client.db("greenHouse").collection("apartment");
     const agreementCollection = client.db("greenHouse").collection("agreement");
     const userCollection = client.db("greenHouse").collection("users");
-    const announcementCollection = client.db("greenHouse").collection("announcement");
+    const announcementCollection = client
+      .db("greenHouse")
+      .collection("announcement");
+
+    const couponsCollection = client.db("greenHouse").collection("coupons");
+    const paymentCollection = client.db("bistroDb").collection("payments");
 
     // jwt
 
@@ -83,7 +93,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users/admin/:email", verifyToken,  async (req, res) => {
+    app.get("/users/admin/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       if (email !== req.decoded.email) {
         return res.status(403).send({ message: " forbidden access" });
@@ -108,39 +118,67 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/users/admin/:id",
+    app.patch(
+      "/users/admin/:id",
       verifyToken,
-       verifyAdmin, 
+      verifyAdmin,
       async (req, res) => {
         const id = req.params.id;
-        const filter = { _id: new ObjectId(id)}
+        const filter = { _id: new ObjectId(id) };
         const updatedDoc = {
           $set: {
             role: "admin",
           },
         };
         const result = await userCollection.updateOne(filter, updatedDoc);
+        console.log(result);
         res.send(result);
       }
     );
 
-    app.patch("/users/member/:id",
-       
+    // member
+
+    app.get("/users/member/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: " forbidden access" });
+      }
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      let member = false;
+      if (user) {
+        member = user?.role === "member";
+      }
+      return res.send({ member });
+    });
+
+    app.patch(
+      "/users/member/:id",
+
       async (req, res) => {
+        console.log("req", req.params);
+        const email = req.body.email;
         const id = req.params.id;
-        const filter = { _id: new ObjectId(id)}
+        console.log("id", id, email);
+        const isExists = await userCollection.findOne({ email });
+        console.log("user", isExists);
         const updatedDoc = {
           $set: {
             role: "member",
           },
         };
-        const result = await userCollection.updateOne(filter, updatedDoc);
-        res.send(result);
+        const result = await userCollection.updateOne({ email }, updatedDoc);
+        if (result.modifiedCount) {
+          await agreementCollection.updateOne(
+            { email },
+            { $set: { status: "approved" } }
+          );
+          res.send(result);
+        }
       }
     );
 
-    app.delete("/users/:id", verifyToken,
-    verifyAdmin,  async (req, res) => {
+    app.delete("/users/:id", verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await userCollection.deleteOne(query);
@@ -155,6 +193,17 @@ async function run() {
     });
 
     // agreement collection api
+    app.get("/agreement", async (req, res) => {
+      const result = await agreementCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.get("/agreement/:email", async (req, res) => {
+      const email = req.query.email;
+      const query = { email: email };
+      const result = await cartsCollection.find(query).toArray();
+      res.send(result);
+    });
 
     app.post("/agreement", async (req, res) => {
       const cartItem = req.body;
@@ -162,8 +211,13 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/agreement",  async (req, res) => {
-      const result = await agreementCollection.find().toArray();
+    
+
+    app.delete("/agreement/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      console.log(id);
+      const query = { _id: new ObjectId(id) };
+      const result = await agreementCollection.deleteOne(query);
       res.send(result);
     });
 
@@ -186,7 +240,6 @@ async function run() {
       res.send({ count });
     });
 
-
     // announcement api
 
     app.post("/announcement", async (req, res) => {
@@ -195,11 +248,69 @@ async function run() {
       res.send(result);
     });
 
-
     app.get("/announcements", async (req, res) => {
       const result = await announcementCollection.find().toArray();
       res.send(result);
     });
+
+    //coupons api
+
+    app.post("/coupons", async (req, res) => {
+      const coupons = req.body;
+      const result = await couponsCollection.insertOne(coupons);
+      res.send(result);
+    });
+
+    app.get("/coupons", async (req, res) => {
+      const result = await couponsCollection.find().toArray();
+      res.send(result);
+    });
+
+      //payment intent
+
+      app.post("/create-payment-intent", async (req, res) => {
+        const { price } = req.body;
+        const amount = parseInt(price * 100);
+        console.log(amount);
+  
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amount,
+          currency: "usd",
+          payment_method_types: ["card"],
+        });
+        res.send({
+          clientSecret: paymentIntent.client_secret,
+        });
+      });
+
+
+      app.get("/payments/:email", verifyToken, async (req, res) => {
+        const query = { email: req.params.email };
+        if (req.params.email !== req.decoded.email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+        const result = await paymentCollection.find(query).toArray();
+        res.send(result);
+      });
+
+      app.post("/payments", async (req, res) => {
+        const payment = req.body;
+  
+        console.log(payment);
+        const paymentResult = await paymentCollection.insertOne(payment);
+  
+        //  carefully delete each item from the cart
+        console.log("payment info", payment);
+        const query = {
+          _id: {
+            $in: payment.cartIds.map((id) => new ObjectId(id)),
+          },
+        };
+  
+        const deleteResult = await agreementCollection.deleteMany(query);
+  
+        res.send({ paymentResult, deleteResult });
+      });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
