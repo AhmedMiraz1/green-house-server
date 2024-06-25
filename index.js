@@ -35,7 +35,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     const apartmentCollection = client.db("greenHouse").collection("apartment");
     const agreementCollection = client.db("greenHouse").collection("agreement");
@@ -58,7 +58,7 @@ async function run() {
     //middleware
 
     const verifyToken = (req, res, next) => {
-      console.log("inside verify token ", !req.headers.authorization);
+      // console.log("inside verify token ", !req.headers.authorization);
       if (!req.headers.authorization) {
         return res.status(401).send({ message: "unauthorized access" });
       }
@@ -95,18 +95,18 @@ async function run() {
 
     app.get("/users/admin/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
-      console.log(email);
+     
       if (email !== req.decoded.email) {
         return res.status(403).send({ message: " forbidden access" });
       }
       const query = { email: email };
-      console.log(query);
+     
       const user = await userCollection.findOne(query);
       let admin = false;
       if (user) {
         admin = user?.role === "admin";
       }
-      console.log("admin", admin);
+     
 
       return res.send({ admin });
     });
@@ -135,7 +135,7 @@ async function run() {
           },
         };
         const result = await userCollection.updateOne(filter, updatedDoc);
-        console.log(result);
+        
         res.send(result);
       }
     );
@@ -219,7 +219,7 @@ async function run() {
 
     app.delete("/agreement/:id", verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
-      console.log(id);
+      // console.log(id);
       const query = { _id: new ObjectId(id) };
       const result = await agreementCollection.deleteOne(query);
       res.send(result);
@@ -300,11 +300,11 @@ async function run() {
       app.post("/payments", async (req, res) => {
         const payment = req.body;
   
-        console.log(payment);
+        // console.log(payment);
         const paymentResult = await paymentCollection.insertOne(payment);
   
         //  carefully delete each item from the cart
-        console.log("payment info", payment);
+        // console.log("payment info", payment);
         const query = {
           _id: {
             $in: payment.cartIds.map((id) => new ObjectId(id)),
