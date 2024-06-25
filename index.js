@@ -4,25 +4,26 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const stripe =require('stripe')(process.env.STRIPE_SECRET_KEY)
 const port = process.env.PORT || 5000;
 
 //middleware
-const corsOptions = {
-  origin: [
-    "b9-12-46aab.web.app",
-    "http://localhost:5173",
-    "http://localhost:5175",
-  ],
-  credentials: true,
-  optionSuccessStatus: 200,
-};
+// const corsOptions = {
+//   origin: [
+//     "b9-12-46aab.web.app",
+//     "http://localhost:5173",
+//     "http://localhost:5175",
+//   ],
+//   credentials: true,
+//   optionSuccessStatus: 200,
+// };
 
-app.use(cors(corsOptions));
+app.use(cors());
 app.use(express.json());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.6w72r5l.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
+// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -33,6 +34,9 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
+    // Connect the client to the server	(optional starting in v4.7)
+    await client.connect();
+
     const apartmentCollection = client.db("greenHouse").collection("apartment");
     const agreementCollection = client.db("greenHouse").collection("agreement");
     const userCollection = client.db("greenHouse").collection("users");
@@ -56,14 +60,16 @@ async function run() {
     //middleware
 
     const verifyToken = (req, res, next) => {
-      // console.log("inside verify token ", req.headers.authorization);
+      console.log("inside verify token ", !req.headers.authorization);
       if (!req.headers.authorization) {
         return res.status(401).send({ message: "unauthorized access" });
       }
 
       const token = req.headers.authorization.split(" ")[1];
       jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        console.log(token);
         if (err) {
+
           return res.status(401).send({ message: "unauthorized access" });
         }
         req.decoded = decoded;
@@ -91,15 +97,19 @@ async function run() {
 
     app.get("/users/admin/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
+      console.log(email);
       if (email !== req.decoded.email) {
         return res.status(403).send({ message: " forbidden access" });
       }
       const query = { email: email };
+      console.log(query);
       const user = await userCollection.findOne(query);
       let admin = false;
       if (user) {
         admin = user?.role === "admin";
       }
+      console.log("admin", admin);
+
       return res.send({ admin });
     });
 
@@ -207,6 +217,8 @@ async function run() {
       res.send(result);
     });
 
+    
+
     app.delete("/agreement/:id", verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       console.log(id);
@@ -249,7 +261,7 @@ async function run() {
 
     //coupons api
 
-    app.post("/coupons", async (req, res) => {
+    app.post("/coupons", verifyToken , verifyAdmin, async (req, res) => {
       const coupons = req.body;
       const result = await couponsCollection.insertOne(coupons);
       res.send(result);
@@ -260,53 +272,54 @@ async function run() {
       res.send(result);
     });
 
-    //payment intent
+      //payment intent
 
-    app.post("/create-payment-intent", async (req, res) => {
-      const { price } = req.body;
-      const amount = parseInt(price * 100);
-      console.log(amount);
-
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: amount,
-        currency: "usd",
-        payment_method_types: ["card"],
+      app.post("/create-payment-intent", async (req, res) => {
+        const { price } = req.body;
+        const amount = parseInt(price * 100);
+        console.log(amount);
+  
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amount,
+          currency: "usd",
+          payment_method_types: ["card"],
+        });
+        res.send({
+          clientSecret: paymentIntent.client_secret,
+        });
       });
-      res.send({
-        clientSecret: paymentIntent.client_secret,
+
+
+      app.get("/payments/:email", async (req, res) => {
+        const query = { email: req.params.email };
+        if (req.params.email !== req.decoded.email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+        const result = await paymentCollection.find(query).toArray();
+        res.send(result);
       });
-    });
 
-    app.get("/payments/:email", verifyToken, async (req, res) => {
-      const query = { email: req.params.email };
-      if (req.params.email !== req.decoded.email) {
-        return res.status(403).send({ message: "forbidden access" });
-      }
-      const result = await paymentCollection.find(query).toArray();
-      res.send(result);
-    });
-
-    app.post("/payments", async (req, res) => {
-      const payment = req.body;
-
-      console.log(payment);
-      const paymentResult = await paymentCollection.insertOne(payment);
-
-      //  carefully delete each item from the cart
-      console.log("payment info", payment);
-      const query = {
-        _id: {
-          $in: payment.cartIds.map((id) => new ObjectId(id)),
-        },
-      };
-
-      const deleteResult = await agreementCollection.deleteMany(query);
-
-      res.send({ paymentResult, deleteResult });
-    });
+      app.post("/payments", async (req, res) => {
+        const payment = req.body;
+  
+        console.log(payment);
+        const paymentResult = await paymentCollection.insertOne(payment);
+  
+        //  carefully delete each item from the cart
+        console.log("payment info", payment);
+        const query = {
+          _id: {
+            $in: payment.cartIds.map((id) => new ObjectId(id)),
+          },
+        };
+  
+        const deleteResult = await agreementCollection.deleteMany(query);
+  
+        res.send({ paymentResult, deleteResult });
+      });
 
     // Send a ping to confirm a successful connection
-    // await client.db("admin").command({ ping: 1 });
+    await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
